@@ -22,6 +22,7 @@
 /** @typedef {import('./report-renderer.js')} ReportRenderer */
 /** @typedef {import('./details-renderer.js')} DetailsRenderer */
 /** @typedef {import('./util.js')} Util */
+/** @typedef {'failed'|'manual'|'passed'|'not-applicable'} TopLevelSectionId */
 
 class CategoryRenderer {
   /**
@@ -188,76 +189,112 @@ class CategoryRenderer {
   }
 
   /**
-   * Find the total number of audits contained within a section.
-   * Accounts for nested subsections like Accessibility.
-   * @param {Array<Element>} elements
-   * @return {number}
+   * Takes an array of auditRefs, groups them if requested, then returns an
+   * array of audit and audit-group elements.
+   * @param {Array<LH.ReportResult.AuditRef>} auditRefs
+   * @param {Object<string, LH.Result.ReportGroup>} groupDefinitions
+   * @param {{expandable: boolean}} opts
+   * @return {Array<Element>}
    */
-  _getTotalAuditsLength(elements) {
-    // Create a scratch element to append sections to so we can reuse querySelectorAll().
-    const scratch = this.dom.createElement('div');
-    elements.forEach(function(element) {
-      scratch.appendChild(element);
-    });
-    const subAudits = scratch.querySelectorAll('.lh-audit');
-    if (subAudits.length) {
-      return subAudits.length;
-    } else {
-      return elements.length;
+  _renderGroupedAudits(auditRefs, groupDefinitions, opts) {
+    // Audits grouped by their group (or under notAGroup).
+    /** @type {Map<string, Array<LH.ReportResult.AuditRef>>} */
+    const grouped = new Map();
+
+    // Add audits without a group first so they will appear first.
+    const notAGroup = 'NotAGroup';
+    grouped.set(notAGroup, []);
+
+    for (const auditRef of auditRefs) {
+      const groupId = auditRef.group || notAGroup;
+      const groupAuditRefs = grouped.get(groupId) || [];
+      groupAuditRefs.push(auditRef);
+      grouped.set(groupId, groupAuditRefs);
     }
+
+    /** @type {Array<Element>} */
+    const auditElements = [];
+    // Continuous numbering across all groups.
+    let index = 0;
+
+    for (const [groupId, groupAuditRefs] of grouped) {
+      if (groupId === notAGroup) {
+        // Push not-grouped audits individually.
+        for (const auditRef of groupAuditRefs) {
+          auditElements.push(this.renderAudit(auditRef, index++));
+        }
+        continue;
+      }
+
+      // Push grouped audits as a group.
+      const groupDef = groupDefinitions[groupId];
+      const auditGroupElem = this.renderAuditGroup(groupDef, opts);
+      for (const auditRef of groupAuditRefs) {
+        auditGroupElem.appendChild(this.renderAudit(auditRef, index++));
+      }
+      auditGroupElem.classList.add('lh-audit-group--unadorned');
+      auditElements.push(auditGroupElem);
+    }
+
+    return auditElements;
   }
 
   /**
-   * @param {Array<Element>} elements
+   * Take a set of audits, group them if they have groups, then render in a top-level
+   * section that can't be expanded/collapsed.
+   * @param {Array<LH.ReportResult.AuditRef>} auditRefs
+   * @param {Object<string, LH.Result.ReportGroup>} groupDefinitions
    * @return {Element}
    */
-  _renderFailedAuditsSection(elements) {
-    const failedElem = this.dom.createElement('div');
-    failedElem.classList.add('lh-failed-audits');
-    elements.forEach(elem => failedElem.appendChild(elem));
-    return failedElem;
+  renderUnexpandableTopLevelSection(auditRefs, groupDefinitions) {
+    const sectionElement = this.dom.createElement('div');
+    const elements = this._renderGroupedAudits(auditRefs, groupDefinitions, {expandable: false});
+    elements.forEach(elem => sectionElement.appendChild(elem));
+    return sectionElement;
   }
 
   /**
-   * @param {Array<Element>} elements
+   * @param {TopLevelSectionId} sectionId
+   * @param {Array<LH.ReportResult.AuditRef>} auditRefs
+   * @param {Object<string, LH.Result.ReportGroup>} groupDefinitions
+   * @param {string} [description] Optional description for section (e.g. manualDescription)
    * @return {Element}
    */
-  renderPassedAuditsSection(elements) {
-    const passedElem = this.renderAuditGroup({
-      title: Util.UIStrings.passedAuditsGroupTitle,
-    }, {expandable: true, itemCount: this._getTotalAuditsLength(elements)});
-    passedElem.classList.add('lh-passed-audits');
-    elements.forEach(elem => passedElem.appendChild(elem));
-    return passedElem;
-  }
+  renderTopLevelSection(sectionId, auditRefs, groupDefinitions, description) {
+    if (sectionId === 'failed') {
+      // Failed audit section is always expanded and not nested in an lh-audit-group.
+      const failedElem = this.renderUnexpandableTopLevelSection(auditRefs, groupDefinitions);
+      failedElem.classList.add('lh-failed-audits');
+      return failedElem;
+    }
 
-  /**
-   * @param {Array<Element>} elements
-   * @return {Element}
-   */
-  _renderNotApplicableAuditsSection(elements) {
-    const notApplicableElem = this.renderAuditGroup({
-      title: Util.UIStrings.notApplicableAuditsGroupTitle,
-    }, {expandable: true, itemCount: this._getTotalAuditsLength(elements)});
-    notApplicableElem.classList.add('lh-audit-group--not-applicable');
-    elements.forEach(elem => notApplicableElem.appendChild(elem));
-    return notApplicableElem;
-  }
+    const expandable = true;
+    const elements = this._renderGroupedAudits(auditRefs, groupDefinitions, {expandable});
 
-  /**
-   * @param {Array<LH.ReportResult.AuditRef>} manualAudits
-   * @param {string} [manualDescription]
-   * @return {Element}
-   */
-  _renderManualAudits(manualAudits, manualDescription) {
-    const group = {title: Util.UIStrings.manualAuditsGroupTitle, description: manualDescription};
-    const auditGroupElem = this.renderAuditGroup(group,
-        {expandable: true, itemCount: manualAudits.length});
-    auditGroupElem.classList.add('lh-audit-group--manual');
-    manualAudits.forEach((audit, i) => {
-      auditGroupElem.appendChild(this.renderAudit(audit, i));
-    });
-    return auditGroupElem;
+    const sectionInfo = {
+      'manual': {
+        title: Util.UIStrings.manualAuditsGroupTitle,
+        className: 'lh-audit-group--manual',
+      },
+      'passed': {
+        title: Util.UIStrings.passedAuditsGroupTitle,
+        className: 'lh-passed-audits',
+      },
+      'not-applicable': {
+        title: Util.UIStrings.notApplicableAuditsGroupTitle,
+        className: 'lh-audit-group--not-applicable',
+      },
+    };
+    const {title, className} = sectionInfo[sectionId];
+
+    const groupDef = {title, description};
+    const opts = {expandable, itemCount: auditRefs.length};
+    const sectionElem = this.renderAuditGroup(groupDef, opts);
+    sectionElem.classList.add(className);
+
+    elements.forEach(elem => sectionElem.appendChild(elem));
+
+    return sectionElem;
   }
 
   /**
@@ -303,104 +340,59 @@ class CategoryRenderer {
   }
 
   /**
+   * Returns the id of the top-level section to put this audit in.
+   * @param {LH.ReportResult.AuditRef} auditRef
+   * @return {TopLevelSectionId}
+   */
+  _getSectionIdForAuditRef(auditRef) {
+    const scoreDisplayMode = auditRef.result.scoreDisplayMode;
+    if (scoreDisplayMode === 'manual' || scoreDisplayMode === 'not-applicable') {
+      return scoreDisplayMode;
+    }
+
+    if (Util.showAsPassed(auditRef.result)) {
+      return 'passed';
+    } else {
+      return 'failed';
+    }
+  }
+
+  /**
    * @param {LH.ReportResult.Category} category
    * @param {Object<string, LH.Result.ReportGroup>} [groupDefinitions]
    * @return {Element}
    */
-  render(category, groupDefinitions) {
+  render(category, groupDefinitions = {}) {
     const element = this.dom.createElement('div', 'lh-category');
     this.createPermalinkSpan(element, category.id);
     element.appendChild(this.renderCategoryHeader(category));
 
-    const auditRefs = category.auditRefs;
-    const manualAudits = auditRefs.filter(audit => audit.result.scoreDisplayMode === 'manual');
-    const nonManualAudits = auditRefs.filter(audit => !manualAudits.includes(audit));
+    // Top level sections for audits, in order they will appear in the report.
+    /** @type {Record<TopLevelSectionId, Array<LH.ReportResult.AuditRef>>} */
+    const sections = {
+      'failed': [],
+      'manual': [],
+      'passed': [],
+      'not-applicable': [],
+    };
 
-    /** @type {Object<string, {passed: Array<LH.ReportResult.AuditRef>, failed: Array<LH.ReportResult.AuditRef>, notApplicable: Array<LH.ReportResult.AuditRef>}>} */
-    const auditsGroupedByGroup = {};
-    const auditsUngrouped = {passed: [], failed: [], notApplicable: []};
-
-    nonManualAudits.forEach(auditRef => {
-      let group;
-
-      if (auditRef.group) {
-        const groupId = auditRef.group;
-
-        if (auditsGroupedByGroup[groupId]) {
-          group = auditsGroupedByGroup[groupId];
-        } else {
-          group = {passed: [], failed: [], notApplicable: []};
-          auditsGroupedByGroup[groupId] = group;
-        }
-      } else {
-        group = auditsUngrouped;
-      }
-
-      if (auditRef.result.scoreDisplayMode === 'not-applicable') {
-        group.notApplicable.push(auditRef);
-      } else if (Util.showAsPassed(auditRef.result)) {
-        group.passed.push(auditRef);
-      } else {
-        group.failed.push(auditRef);
-      }
-    });
-
-    const failedElements = /** @type {Array<Element>} */ ([]);
-    const passedElements = /** @type {Array<Element>} */ ([]);
-    const notApplicableElements = /** @type {Array<Element>} */ ([]);
-
-    auditsUngrouped.failed.forEach((audit, i) => failedElements.push(this.renderAudit(audit, i)));
-    auditsUngrouped.passed.forEach((audit, i) => passedElements.push(this.renderAudit(audit, i)));
-    auditsUngrouped.notApplicable.forEach((audit, i) => notApplicableElements.push(
-        this.renderAudit(audit, i)));
-
-    Object.keys(auditsGroupedByGroup).forEach(groupId => {
-      if (!groupDefinitions) return; // We never reach here if there aren't groups, but TSC needs convincing
-
-      const group = groupDefinitions[groupId];
-      const groups = auditsGroupedByGroup[groupId];
-
-      if (groups.failed.length) {
-        const auditGroupElem = this.renderAuditGroup(group, {expandable: false});
-        groups.failed.forEach((item, i) => auditGroupElem.appendChild(this.renderAudit(item, i)));
-        auditGroupElem.classList.add('lh-audit-group--unadorned');
-        failedElements.push(auditGroupElem);
-      }
-
-      if (groups.passed.length) {
-        const auditGroupElem = this.renderAuditGroup(group, {expandable: true});
-        groups.passed.forEach((item, i) => auditGroupElem.appendChild(this.renderAudit(item, i)));
-        auditGroupElem.classList.add('lh-audit-group--unadorned');
-        passedElements.push(auditGroupElem);
-      }
-
-      if (groups.notApplicable.length) {
-        const auditGroupElem = this.renderAuditGroup(group, {expandable: true});
-        groups.notApplicable.forEach((item, i) =>
-            auditGroupElem.appendChild(this.renderAudit(item, i)));
-        auditGroupElem.classList.add('lh-audit-group--unadorned');
-        notApplicableElements.push(auditGroupElem);
-      }
-    });
-
-    if (failedElements.length) {
-      const failedElem = this._renderFailedAuditsSection(failedElements);
-      element.appendChild(failedElem);
+    // Sort audits into sections.
+    for (const auditRef of category.auditRefs) {
+      const sectionId = this._getSectionIdForAuditRef(auditRef);
+      sections[sectionId].push(auditRef);
     }
 
-    if (manualAudits.length) {
-      const manualEl = this._renderManualAudits(manualAudits, category.manualDescription);
-      element.appendChild(manualEl);
-    }
+    // Render each section.
+    for (const [sectionIdStr, sectionRefs] of Object.entries(sections)) {
+      if (sectionRefs.length === 0) continue;
 
-    if (passedElements.length) {
-      const passedElem = this.renderPassedAuditsSection(passedElements);
-      element.appendChild(passedElem);
-    }
+      // Coerce back from string to convince tsc.
+      const sectionId = /** @type {TopLevelSectionId} */ (sectionIdStr);
+      const description = sectionId === 'manual' ? category.manualDescription : undefined;
 
-    if (notApplicableElements.length) {
-      const notApplicableElem = this._renderNotApplicableAuditsSection(notApplicableElements);
-      element.appendChild(notApplicableElem);
+      const sectionElem = this.renderTopLevelSection(sectionId, sectionRefs, groupDefinitions,
+          description);
+      element.appendChild(sectionElem);
     }
 
     return element;
