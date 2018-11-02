@@ -966,6 +966,8 @@
  */
 .lh-chevron {
   --chevron-angle: 42deg;
+  /** calc is not working in edge when using rotate. so we define it here */
+  --chevron-angle-right: -42deg;
   width: var(--chevron-size);
   height: var(--chevron-size);
   margin-top: calc((var(--body-line-height) - 12px) / 2);
@@ -988,7 +990,7 @@
 .lh-audit-group[open] > summary > .lh-audit-group__summary > .lh-chevron .lh-chevron__line-left,
 .lh-audit > .lh-expandable-details .lh-chevron__line-right,
 .lh-audit > .lh-expandable-details[open] .lh-chevron__line-left {
- transform: rotate(calc(var(--chevron-angle) * -1));
+ transform: rotate(var(--chevron-angle-right));
 }
 
 .lh-audit-group[open] > summary > .lh-audit-group__summary > .lh-chevron .lh-chevron__line-right,
