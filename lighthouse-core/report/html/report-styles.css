@@ -54,6 +54,7 @@
   --metric-timeline-rule-color: #b3b3b3;
   --display-value-gray: hsl(216, 5%, 39%);
   --report-width: calc(60 * var(--body-font-size));
+  --report-width-half: calc(30 * var(--body-font-size));
   --report-header-height: 161px;
   --report-header-color: #202124;
   --navitem-font-size: var(--body-font-size);
