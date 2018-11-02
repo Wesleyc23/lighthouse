@@ -125,7 +125,7 @@
   100% { opacity: 0.6;}
 }
 
-/* set default display on block edge threat them as inline (unknown element) */
+/* Edge doesn't recognize these, so we preemptively set to display:block */
 details, summary {
   display: block;
 }
