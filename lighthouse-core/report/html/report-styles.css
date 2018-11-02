@@ -54,6 +54,7 @@
   --metric-timeline-rule-color: #b3b3b3;
   --display-value-gray: hsl(216, 5%, 39%);
   --report-width: calc(60 * var(--body-font-size));
+  /* Edge doesn't support calc(var(calc())) */
   --report-width-half: calc(30 * var(--body-font-size));
   --report-header-height: 161px;
   --report-header-color: #202124;
