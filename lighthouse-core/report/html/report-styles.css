@@ -124,6 +124,11 @@
   100% { opacity: 0.6;}
 }
 
+/* set default display on block edge threat them as inline (unknown element) */
+details, summary {
+  display: block;
+}
+
 .lh-root * {
   box-sizing: border-box;
 }
