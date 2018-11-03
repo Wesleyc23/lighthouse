@@ -215,7 +215,7 @@ class PerformanceCategoryRenderer extends CategoryRenderer {
 
     if (!passedAudits.length) return element;
 
-    const passedElem = this.renderTopLevelSection('passed', passedAudits, groups);
+    const passedElem = this.renderClump('passed', passedAudits, groups);
     element.appendChild(passedElem);
     return element;
   }
